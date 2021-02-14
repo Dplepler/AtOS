@@ -6,7 +6,7 @@
 
 
 
-OEMLabel		db "AtOS-BOOT"	; Disk label
+OEMLabel		db "AtOSBOOT"	; Disk label
 BytesPerSector		dw 512		; Bytes per sector
 SectorsPerCluster	db 1		; Sectors per cluster
 ReservedForBoot		dw 1		; Reserved sectors for boot record
@@ -23,9 +23,9 @@ LargeSectors		dd 0		; Number of LBA sectors
 DriveNo			dw 0		; Drive No: 0
 Signature		db 41		; Drive signature: 41 for floppy
 VolumeID		dd 00000000h	; Volume ID: any number
-VolumeLabel		db "AtOS     "; Volume Label: any 11 chars
+VolumeLabel		db "AtOS       "; Volume Label: any 11 chars
 FileSystem		db "FAT12   "	; File system type: don't change!
-
+ 
 
 ; ------------------------------------------------------------------
 ; Main bootloader code
