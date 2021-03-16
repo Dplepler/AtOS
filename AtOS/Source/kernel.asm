@@ -1,8 +1,10 @@
 	BITS 16
 
+disk_buffer equ 24576
+
 os_main:
 	cli				; Clear interrupts
-	mov ax, 0
+	xor ax, ax
 	mov ss, ax			; Set stack segment and pointer
 	mov sp, 0FFFFh
 	sti				; Restore interrupts
@@ -36,9 +38,16 @@ no_change:
 	int 10h
 
 
-mov ax, welcome_message
-call draw_background
-call file_list_dialog
+;mov ax, welcome_message
+;call draw_background
+;call file_list_dialog
+xor dx, dx
+call move_cursor
+
+mov si, message
+call fatten_file
+mov si, ax
+call print_string
 
 	
 foo:
@@ -55,9 +64,9 @@ foo:
 ;=====================================
 	
 	welcome_message db "AtOS, made from my suffering", 0
-	bootdev db 0
-	Sides dw 2
-	SecsPerTrack dw 18
+	message db "123.exe", 0
+	
+
 	
 	
 ;=====================================
@@ -67,3 +76,4 @@ foo:
 	%INCLUDE "Source\Features\string.asm"
 	%INCLUDE "Source\Features\screen.asm"
 	%INCLUDE "Source\Features\keyboard.asm"
+	%INCLUDE "Source\Features\disk.asm"

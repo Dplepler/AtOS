@@ -1,8 +1,5 @@
 
 
-
-
-
 ;Function hides text mode cursor
 ; IN/OUT: Nothing
 hide_cursor:
@@ -144,12 +141,12 @@ files:
 	mov dh, 4
 	call move_cursor
 	
-	mov si, file_list
+	mov si, file_list ;File list is a comma separated string of files
 	
 	mov ah, 0Eh			; int 10h teletype function
 	
 	
-.repeat1:
+.repeat:
 	lodsb 
 	cmp al, ','
 	je .replace_comma
@@ -157,7 +154,7 @@ files:
 	je .done
 	int 10h
 	
-	jmp .repeat1
+	jmp .repeat
 	
 ;Instead of comma, go down a line
 .replace_comma:
@@ -176,14 +173,28 @@ file_list_dialog:
 
 	pusha
 	
-	;Parameters to draw a drak gray block
-	mov dh, 4
-	mov dl, 0
-	mov bl, 10001111b
-	mov si, 20
-	mov di, 20
+	xor dx, dx
+	call move_cursor
+	
+	mov dh, max_cursor_pos
+	dec dh
+	mov si, 22
+	mov di, 21
+	mov bl, 01111111b ;Color - white text on gray
 	
 	call draw_blocks
+	
+	
+	;Parameters to draw a drak gray block
+	mov dh, max_cursor_pos ;Starting y position
+	mov dl, 0 ;Starting x position
+	mov bl, 10001111b ;Color - white text on gray
+	mov si, 20 ;Finish x position
+	mov di, 20 ;Finish y position
+	
+	call draw_blocks
+	
+
 	
 	call files
 	
@@ -214,7 +225,7 @@ file_list_dialog:
 .up_pressed:
 	
 	cmp dh, max_cursor_pos
-	je .scroll_files
+	je .move_down
 	
 	dec byte [cursor_ylocation]
 	jmp file_list_dialog
@@ -222,14 +233,22 @@ file_list_dialog:
 .down_pressed:
 	
 	cmp dh, min_cursor_pos
-	je .scroll_files
+	je .move_up
 	
 	inc byte [cursor_ylocation]
 	jmp file_list_dialog
 	
-	popa
-	ret
+.move_down:
 	
+	mov dx, min_cursor_pos
+	mov [cursor_ylocation], dx
+	jmp file_list_dialog
+	
+	
+.move_up:
+	mov dx, max_cursor_pos
+	mov [cursor_ylocation], dx
+	jmp file_list_dialog
 	
 
 	
@@ -237,16 +256,10 @@ file_list_dialog:
 ;================================
 ;DATA
 ;================================
-file_list db "hello.exe,toe.mm,shitandpoop.kaki", 0
+file_list db "hello.exe,hello.zip,let'sgo.com", 0
 message_files db "Select a file", 0
 cursor_ylocation dw 4
 max_cursor_pos equ 4
 min_cursor_pos equ 19
-
-
-
-
-
-
 
  
