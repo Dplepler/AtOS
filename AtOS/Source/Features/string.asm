@@ -1,8 +1,10 @@
 
+; The string file contains all simple string operations
 
-;Function to print a string in si
-;Input: SI = string, DL = row (x), DH = column (y), bl = color
-;Output: String in SI to screen
+
+; print_string to print a string in si
+; Input: SI = string, bl = color
+; Output: String in SI to screen
 print_string:
 	pusha
 
@@ -21,35 +23,10 @@ print_string:
 	ret
 	
 	
-;Function gets a string in SI and returns the length of the string in AX
-;Input: SI = String
-;Output: AX = Length	
-string_length:
-	pusha
-	xor cx, cx
-	
-.repeat:
 
-	lodsb				; Get char from string
-	cmp al, 0
-	je .done			; If char is zero, end of string
-	
-	inc cx
-
-	jmp .repeat			; And move on to next char
-
-.done:
-	mov word [.tmp_counter], cx
-	popa
-	mov ax, [.tmp_counter]
-	ret
-	
-	.tmp_counter dw 0
-	
-
-;Function takes a string in AX and makes it all uppercase
-;Input: AX = String
-;Output: AX = Uppercase string
+; uppercase takes a string in AX and makes it all uppercase
+; Input: AX = String
+; Output: AX = Uppercase string
 uppercase:
 
 	pusha
@@ -80,25 +57,25 @@ uppercase:
 	popa
 	ret
 	
-;Function compares to strings
-;Input: SI = first string, DI = second string
-;Output: Carry set if strings are equal
+; compare_strings compares two strings
+; Input: SI = first string, DI = second string
+; Output: Carry set if strings are equal
 compare_strings:
 	pusha
 .do:
-	cmp [si], 0 ;If at least one string is finished, they're equal
-	je .equal ;lol "jump equal equal"
+	cmp byte [si], 0 ; If at least one string is finished, they're equal
+	je .equal ; lol "jump equal equal"
 	
-	mov al, [si] ;Can't compare two memory addresses
+	mov al, [si] ; Can't compare two memory addresses
 	mov ah, [di]
 	cmp al, ah 
-	jne .not_equal ;If one char is not equal, nothing is
-	inc si ;Next char
+	jne .not_equal ; If one char is not equal, nothing is
+	inc si ; Next char
 	inc di
 	
 	jmp .do
 	
-.equal: ;If equal, set carry flag and return
+.equal: ; If equal, set carry flag and return
 	popa
 	stc
 	ret
@@ -108,8 +85,36 @@ compare_strings:
 	clc
 	ret
 	
+; string_length gets a string in AX and returns the length in AX
+; Input: AX = string
+; Output: AX = length
+string_length:
+	pusha
 	
+	mov si, ax
+	xor cx, cx
 	
+.repeat:
+	
+	lodsb
+	
+	cmp al, 0
+	je .finish
+	
+	inc cx
+	
+	jmp .repeat
+	
+.finish:
+	
+	mov [.tmp_size], cx
+	popa
+	
+	mov ax, [.tmp_size]
+	
+	ret
+	
+	.tmp_size dw 0
 	
 	
 	

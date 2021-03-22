@@ -1,3 +1,5 @@
+;The kernel file is the main file that will be executed after the bootloader
+	
 	BITS 16
 
 disk_buffer equ 24576
@@ -38,16 +40,8 @@ no_change:
 	int 10h
 
 
-;mov ax, welcome_message
-;call draw_background
-;call file_list_dialog
-xor dx, dx
-call move_cursor
 
-mov si, message
-call fatten_file
-mov si, ax
-call print_string
+call choose_command
 
 	
 foo:
@@ -63,8 +57,8 @@ foo:
 ;			     DATA				     
 ;=====================================
 	
-	welcome_message db "AtOS, made from my suffering", 0
-	message db "123.exe", 0
+	
+	
 	
 
 	
@@ -77,3 +71,4 @@ foo:
 	%INCLUDE "Source\Features\screen.asm"
 	%INCLUDE "Source\Features\keyboard.asm"
 	%INCLUDE "Source\Features\disk.asm"
+	%INCLUDE "Source\Features\commands.asm"
