@@ -2,8 +2,10 @@
 ; The screen file contains graphic functions working on text and color of the screen
 
 ; hide cursor hides text mode cursor
-; IN/OUT: Nothing
+; Input: None
+; Output: None
 hide_cursor:
+
 	pusha
 
 	mov ch, 32
@@ -149,128 +151,6 @@ get_cursor_pos:
 
 	.tmp dw 0
 	
-	
-; files writes all files into screen
-; Input: None
-; Output: None
-files:
-	
-	pusha
-	
-	;Position to start writing files from
-	xor dx, dx
-	mov dh, 4
-	call move_cursor
-	
-	mov si, file_list ;File list is a comma separated string of files
-	
-	mov ah, 0Eh			; int 10h teletype function
-	
-	
-.repeat:
-	lodsb 
-	cmp al, ','
-	je .replace_comma
-	cmp al, 0
-	je .done
-	int 10h
-	
-	jmp .repeat
-	
-;Instead of comma, go down a line
-.replace_comma:
-	inc dh
-	mov dl, 0
-	call move_cursor
-
-	jmp .repeat
-	
-.done:
-
-	popa
-	ret
-	
-; file_list_dialog draws a gray block with all the current files in the system by getting a string of all filenames seperated by a comma
-; Input: File list seperated by a comma
-; Output: None
-file_list_dialog:
-
-	pusha
-	
-	xor dx, dx
-	call move_cursor
-	
-	mov dh, max_cursor_pos
-	dec dh
-	mov si, 22
-	mov di, 21
-	mov bl, 01111111b 	; Color - white text on gray
-	
-	call draw_blocks
-	
-	
-	; Parameters to draw a drak gray block
-	mov dh, max_cursor_pos 	; Starting y position
-	mov dl, 0  ; Starting x position
-	mov bl, 10001111b ;Color - white text on gray
-	mov si, 20 	; Finish x position
-	mov di, 20 	; Finish y position
-	
-	call draw_blocks	
-	call files
-	
-; Draw white file mark
-.draw_mark:
-	xor dx, dx
-	mov dh, [cursor_ylocation] 	 ; Y position
-	mov bl, 11110000b 	; Color - Black text on white
-	mov si, 20 	; Width - 20
-	mov di, [cursor_ylocation] 	; Max Y = Y + 1
-	inc di
-	call draw_blocks
-	
-	call files
-	
-.scroll_files:
-
-	call wait_for_key
-	
-	cmp ah, 48h ; Up 
-	je .up_pressed
-	
-	cmp ah, 50h ;Down
-	je .down_pressed
-	
-	jmp .scroll_files
-	
-.up_pressed:
-	
-	cmp dh, max_cursor_pos
-	je .move_down
-	
-	dec byte [cursor_ylocation]
-	jmp file_list_dialog
-	
-.down_pressed:
-	
-	cmp dh, min_cursor_pos
-	je .move_up
-	
-	inc byte [cursor_ylocation]
-	jmp file_list_dialog
-	
-.move_down:
-	
-	mov dx, min_cursor_pos
-	mov [cursor_ylocation], dx
-	jmp file_list_dialog
-	
-	
-.move_up:
-	mov dx, max_cursor_pos
-	mov [cursor_ylocation], dx
-	jmp file_list_dialog
-	
 
 ; commands_dialog draws the list of commands
 ; Input: None
@@ -279,20 +159,34 @@ commands_dialog:
 	
 	pusha	
 	
+	; Drawing frame for the command box
+	mov dh, 2
+	mov dl, 20
+	mov bl, 01110000b ; Black on gray
+	mov bh, 0
+	mov si, 40
+	mov di, 6
+	call draw_blocks
+	
 .drawing:
+
 	; Drawing red box
 	mov dh, 3 		; Y = 3
-	mov dl, 21		; X = 21  (80/2) - (39/2) = 21, calculating middle of the screen minus middle of the text
+	mov dl, 21		; X = 21  (80/2) - (41/2) = 20, calculating middle of the screen minus middle of the red box
 	mov bl, 11001111b
-	mov si, 39  	; Width
-	mov di, 4 		; Finish Y = 4
+	mov bh, 0
+	mov si, 38  	; Width
+	mov di, 5 		; Finish Y = 5
 	call draw_blocks
 	
 
 	; Drawing file marker
 	mov dl, [cursor_xlocation]
-	mov si, 11 ; Width of currently selected file
+	mov dh, [cursor_ylocation]
+	mov si, 11 		; Width of currently selected file
 	mov bl, 11111100b ; Red text on white background
+	mov di, [cursor_ylocation]
+	inc di
 	call draw_blocks
 	
 	call write_commands
@@ -307,6 +201,12 @@ commands_dialog:
 	cmp ah,  4Bh ; Left pressed
 	je .left_pressed
 	
+	cmp ah, 50h  ; Down pressed
+	je .down_pressed
+	
+	cmp ah, 48h
+	je .up_pressed
+	
 	cmp ah, 1Ch ; Enter pressed
 	je .command_selected
 	
@@ -315,19 +215,36 @@ commands_dialog:
 	
 .right_pressed:
 	
-	cmp dl, 49 ; Max right position
-	je .go_left ; If we're at the max right position and we want to move right, go to the max left position
+	cmp dl, 47 ; Max right position
+	jae .go_left ; If we're at the max right position and we want to move right, go to the max left position
 	
-	add word [cursor_xlocation], 14 ; Move right
+	add word [cursor_xlocation], 13 ; Move right
 	jmp .drawing
 	
 .left_pressed:
 
 	cmp dl, 21 ; Max left position
-	je .go_right ; If we're at the max left position and we want to move left, go to the max right position 
+	jbe .go_right ; If we're at the max left position and we want to move left, go to the max right position 
 
-	sub word [cursor_xlocation], 14 ; Move right
+	sub word [cursor_xlocation], 13 ; Move right
 	jmp .drawing
+	
+.down_pressed:
+	
+	cmp dh, 4
+	je .drawing
+	
+	inc word [cursor_ylocation]
+	jmp .drawing
+	
+.up_pressed:
+
+	cmp dh, 3
+	je .drawing
+	
+	dec word [cursor_ylocation]
+	jmp .drawing
+	
 
 .go_left:
 	
@@ -336,21 +253,24 @@ commands_dialog:
 	
 .go_right:
 
-	mov word [cursor_xlocation], 49 	; Max right position
+	mov word [cursor_xlocation], 47 	; Max right position
 	jmp .drawing
+	
+
 	
 .command_selected:
 	
-	mov [.save_location], dl ; Saving X position to return
+	mov [.save_locationX], dl ; Saving X position to return
+	mov [.save_locationY], dh ; Saving Y position to return
 	
 	popa	
 	
-	mov dl, [.save_location]
+	mov dl, [.save_locationX]
+	mov dh, [.save_locationY]
 	ret
 	
-	
-	.filename dw 0
-	.save_location db 0
+	.save_locationX db 0
+	.save_locationY db 0
 	
 ; write_commands writes all the commands 
 ; Input: None
@@ -363,8 +283,12 @@ write_commands:
 	mov dh, 3  	
 	mov dl, 21
 	call move_cursor
-	mov si, command_list
-	call print_string  
+	mov si, command_list1
+	call print_string 
+	inc dh
+	call move_cursor
+	mov si, command_list2
+	call print_string
 	
 	
 	popa
@@ -384,6 +308,7 @@ command_box:
 	mov dl, 20 	 ; X location to start
 	mov dh, 4 	; Y location to start
 	mov bl, 11001111b 	; Red color on white text
+	mov bh, 0
 	mov si, 40 	 ; Width 
 	mov di, 14 	; Height
 	call draw_blocks
@@ -392,6 +317,7 @@ command_box:
 	mov dl, 21 	
 	mov dh, 5
 	mov bl, 11110000b 	 ; Black text on white
+	mov bh, 0
 	mov si, 38
 	mov di, 12
 	call draw_blocks
@@ -414,13 +340,183 @@ command_box:
 	ret
 	
 	
+; text_box prints the box where the user will write some fresh text
+; Input: AX = Caption, SI = Message
+; Output: None
+text_box:
+
+	pusha
+	push si
+	
+	call draw_background
+	
+	; Drawing red square
+	mov dl, 23 	 ; X location to start
+	mov dh, 2 	; Y location to start
+	mov bl, 11001111b 	; Red color on white text
+	mov bh, 0
+	mov si, 34 	 ; Width 
+	mov di, 25 	; Height
+	call draw_blocks
+	
+	; Drawing white square inside the red square
+	mov dl, 24 	
+	mov dh, 3
+	mov bl, 11110000b 	 ; Black text on white
+	mov si, 32
+	mov di, 24
+	call draw_blocks
+
+	mov dl, 23
+	mov dh, 2
+	call move_cursor
+	
+	pop si
+	call print_string
+	
+	inc dh
+	inc dl
+	
+	call move_cursor
+	
+	popa
+	ret
+	
+; move_marker moves the marker
+; Input: CX = number of files, DI = location of file
+; Output: selected filename string location in DI
+move_marker:
+
+	pusha
+	push di	
+	
+	call hide_cursor
+	
+	call wait_for_key
+	
+	mov word [.num_of_files], cx 	; Store CX param
+	add word [.num_of_files], 3 	; Now .num_of_files will contain the max Y position
+	
+	mov byte [.Xlocation], 24
+	mov byte [.Ylocation], 4
+	
+.drawing:
+
+	; Drawing white square
+	mov dl, 24 	
+	mov dh, 3
+	mov bl, 11110000b 	 ; Black text on white
+	mov si, 12 		; We only need to fill the max string length
+	mov di, 24
+	call draw_blocks
+	
+	;drawing marker
+	mov dl, [.Xlocation]
+	mov dh, [.Ylocation]
+	mov bl, 10001111b 	; White text on gray
+	mov bh, 0
+	mov si, 12
+	xor ax, ax
+	mov al, dh
+	inc al 
+	mov di, ax
+	call draw_blocks
+	
+	
+	call show_all_files 	; Get comma seperated string of all files
+	
+.get_input:
+
+	call wait_for_key
+	
+	cmp ah, 50h  ; Down pressed
+	je .down_pressed
+	
+	cmp ah, 48h  ; Up pressed
+	je .up_pressed
+	
+	cmp ah, 1Ch ; Enter pressed
+	je .file_selected
+	
+	jmp .get_input
+	
+.down_pressed:
+	
+	cmp dh, [.num_of_files]
+	je .get_input
+	
+	inc word [.Ylocation]
+	jmp .drawing
+	
+.up_pressed:
+
+	cmp dh, 3
+	je .get_input
+	
+	dec word [.Ylocation]
+	jmp .drawing
+	
+.file_selected:
+	
+	mov dl, 24
+	mov dh, [.Ylocation]
+	call move_cursor
+	
+	mov ah, 8
+	pop si,  		; Location to put the selected filename
+	
+	
+.read_filename:
+
+	int 10h
+	
+	mov byte [si], al
+	inc si
+	inc dl
+	call move_cursor
+	
+	cmp al, '.'
+	je .extention
+	
+	
+	
+	jmp .read_filename
+	
+.extention:
+	
+	mov cx, 3
+
+.add_extention:
+	int 10h
+	mov byte [si], al
+	inc si
+	inc dl
+	call move_cursor
+	
+	loop .add_extention
+	
+	mov byte [si], 0
+
+	popa
+	ret
+	
+
+
+	.Xlocation db 24
+	.Ylocation db 3
+	.num_of_files dw 0
+	.rename_message1 db "Select file to rename: ", 0
+	.rename_caption db "Rename", 0
+	
+	
+	
 ;================================
 ;DATA
 ;================================
-	command_list db "write file    rename file   delete file", 0 ; Size = 38 bytes/characters
-	file_list db "hello.exe,hello.zip,let'sgo.com", 0
+	command_list1 db "Write file   Rename file  Delete file", 0 ; Size = 37 bytes/characters
+	command_list2 db "Show files", 0
 	message_files db "Select a file", 0
-	cursor_ylocation dw 4
+	cursor_ylocation dw 3
 	cursor_xlocation dw 21
 	max_cursor_pos equ 4
 	min_cursor_pos equ 19

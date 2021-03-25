@@ -1,8 +1,8 @@
 
 
-;Function waits for key press
-;Input: Nothing
-;Output: Key pressed in AX
+; wait_for_key waits for key press
+; Input: Nothing
+; Output: Key pressed in AX
 wait_for_key:
 
 	mov ah, 11h

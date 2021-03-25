@@ -1,9 +1,9 @@
 
 ; The disk file is a file containing all the disk operations and FAT12 system on the floppy
 
-;read_rootdir reads the root directory from the disk to disk buffer
-;Input: Nothing
-;Output: Carry flag if function failed
+; read_rootdir reads the root directory from the disk to disk buffer
+; Input: Nothing
+; Output: Carry flag if function failed
 read_rootdir:
 	pusha
 	
@@ -130,71 +130,88 @@ write_fat:
 	stc
 	ret
 
-;fatten_file makes a filename fat12 style - remove dot and add spaces so the file will be 11 bytes long
-;Input: SI = filename string
-;Output: AX = location of string
+; fatten_file makes a filename FAT12 style by making it 11 bytes long with spaces filling (example: FOO.EXE = FOO     EXE)
+; Input: AX = filename string
+; Ouput: AX = location of converted string (carry set if invalid)
 fatten_file:
 	pusha
-	
-	call string_length
-	
-	cmp ax, 13 ; If filename is larger or equal to 13 bytes, it is a bad filename
-	jge .fail
-	
-	cmp ax, 0 ; If filename is 0, it is also a bad filename
-	je .fail
-	
-	mov di, .fat_string ; Get location of new string
-	
-	xor cx, cx
-	
-.loopy:
 
-	lodsb 
+	mov si, ax
+
+	call string_length
+	cmp ax, 14			; Filename too long?
+	jg .failure			; Fail if so
+
+	cmp ax, 0
+	je .failure			; Similarly, fail if zero-char string
+
+	mov dx, ax			; Store string length for now
+
+	mov di, .dest_string
+
+	mov cx, 0
+.copy_loop:
+	lodsb
 	cmp al, '.'
-	je .add_space
+	je .extension_found
 	stosb
 	inc cx
+	cmp cx, dx
+	jg .failure			; No extension found = wrong
+	jmp .copy_loop
+
+.extension_found:
+	cmp cx, 0
+	je .failure			; Fail if extension dot is first char
+
 	cmp cx, 8
-	jg .fail ; If filename does not have a dot after 8 bytes it's a bad filename
-	jmp .loopy
-	
-.add_space:
-	cmp cx, 8
-	je .extention
+	je .do_extension		; Skip spaces if first bit is 8 chars
+
+	; Now it's time to pad out the rest of the first part of the filename
+	; with spaces, if necessary
+
+.add_spaces:
 	mov byte [di], ' '
 	inc di
 	inc cx
-	jmp .add_space
-	
-.extention:
-	mov cx, 3
-.extention_loop: ;Adding file extention
-	lodsb
+	cmp cx, 8
+	jl .add_spaces
+
+	; Finally, copy over the extension
+.do_extension:
+	lodsb				; 3 characters
+	cmp al, 0
+	je .failure
 	stosb
-	loop .extention_loop
-	mov byte [di], 0 
-	
+	lodsb
+	cmp al, 0
+	je .failure
+	stosb
+	lodsb
+	cmp al, 0
+	je .failure
+	stosb
+
+	mov byte [di], 0		; Zero-terminate filename
+
 	popa
-	clc
-	
-	
-	mov ax, .fat_string
-	
+	mov ax, .dest_string
+	clc				; Clear carry for success
 	ret
 
-.fail:
-	
+
+.failure:
 	popa
-	mov ax, .fat_string
-	stc
+	stc				; Set carry for failure
 	ret
+
+
+	.dest_string	times 13 db 0
 	
 	
-	.fat_string times 12 db 0
-	
-	
-; get_file_list makes a comma seperated string of all filenames in the floppy disk
+; get_file_list makes a comma seperated string of all file names in the floppy disk
+; Input: AX = Empty string
+; Output: AX = Same string with all file names and a 0 at the end
 get_file_list:
 	pusha
 
@@ -500,21 +517,21 @@ load_file:
 	.err_msg_floppy_reset	db 'os_load_file: Floppy failed to reset', 0
 	
 
-	
-; write_file -- Save (max 64K) file to disk
+
+; write_file saves (max 64K) file to disk
 ; IN: AX = filename, BX = data location, CX = bytes to write
 ; OUT: Carry clear if OK, set if failure
 write_file:
 	pusha
 
-	mov si, ax ;Error if string is null
+	mov si, ax  	; Error if string is null
 	call string_length
 	cmp ax, 0
 	je near .failure
 	mov ax, si
 
 	call uppercase
-	call fatten_file	; Make filename FAT12-style 
+	call fatten_file	; Make filename FAT12-style
 	jc near .failure
 
 	mov word [.filesize], cx 	; Store parameters
@@ -523,6 +540,8 @@ write_file:
 
 	call file_exists		; Don't overwrite a file if it exists!
 	jnc near .failure
+	
+	
 
 
 	; First, zero out the .free_clusters list from any previous execution
@@ -742,9 +761,9 @@ write_file:
 
 	call disk_convert_l2hts
 
-	mov word bx, [.location] ; Location to load at ES:BX
+	mov word bx, [.location] ; Location to read from at ES:BX
 
-	mov ah, 3 ;Loading from cluster to location
+	mov ah, 3 		; Writing clusters
 	mov al, 1
 	stc
 	int 13h
@@ -794,17 +813,18 @@ write_file:
 	.cluster	dw 0
 	.count		dw 0
 	.location	dw 0
-
+	
+	.bad_message dw "shoot", 0
 	.clusters_needed	dw 0
 
 	.filename	dw 0
 
 	.free_clusters	times 128 dw 0
 	
-;get_root_entry searches RAM copy of root dir for file entry
-;Input: AX = filename
-;Output: DI = location in disk_buffer of root dir entry,
-;or carry set if file not found
+; get_root_entry searches RAM copy of root dir for file entry
+; Input: AX = filename
+; Output: DI = location in disk_buffer of filename root dir entry,
+; or carry set if file not found
 
 get_root_entry:
 	pusha
@@ -938,10 +958,49 @@ create_file:
 	ret
 	
 
+; rename_file takes a filename and switches it with a new filename
+; Input: AX = filename, BX = new filename
+; Output: Carry flag if failure happens
+rename_file:
+	pusha
 	
-;file_exists checks if file exists and returns a carry flag if it doesn'table
-;Input: AX = Filename
-;Output: carry flag set if file not found, otherwise cleared
+	push ax 	; This is useless but we want to store the bx param
+	push bx 	; Storing BX
+	
+	call read_rootdir 	; Making a copy of the root directory in the disk buffer
+	
+	call fatten_file 	; Converting filename into a fat12 style
+	call uppercase
+	
+	call get_root_entry 	; Checking if filename exists and if it does return location in DI
+	jc .failure 	; If function didn't work..
+	
+	pop ax 	; Popping the new string to AX
+	call fatten_file 	; Making the new filename string fat12 style
+	call uppercase
+	
+	mov si, ax 	
+	
+	mov cx, 11 		; 11 bytes to copy from SI to DI
+	rep movsb
+	
+	call write_rootdir 	; Writing our new root directory from the disk buffer to disk
+	jc .failure
+	
+	popa
+	clc
+	ret
+	
+.failure:
+	popa
+	stc
+	ret
+
+
+	
+; file_exists checks if a file exists and returns a carry flag if it doesn't
+; Input: AX = Filename
+; Output: carry flag set if file not found, otherwise cleared
 file_exists:
 	pusha
 	
