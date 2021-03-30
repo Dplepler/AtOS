@@ -7,17 +7,17 @@
 read_rootdir:
 	pusha
 	
-	mov ax, 19 ;Read from sector 19 (root directory)
+	mov ax, 19 ; Read from sector 19 (root directory)
 	call disk_convert_l2hts
 	
-	mov bx, disk_buffer ;ES:BX will point to disk_buffer
+	mov bx, disk_buffer ; ES:BX will point to disk_buffer
 	mov ax, ds
 	mov es, ax
 	
-	mov ah, 2 ;Param to read
-	mov al, 14 ;Read 14 sectors 
+	mov ah, 2 ; Param to read
+	mov al, 14 ; Read 14 sectors 
 	
-	pusha ;Save registers, enter loop
+	pusha ; Save registers, enter loop
 	
 .read_dir:
 	popa
@@ -31,20 +31,20 @@ read_rootdir:
 	jmp .fail
 	
 	
-.done: ;Clear carry flag and pop registers to the beginning of system call
+.done: ; Clear carry flag and pop registers to the beginning of system call
 	clc
 	popa
 	popa
 	ret
 
-.fail: ;Turn on carry flag if function failed, bring back registers from the beginning of the system call and return
+.fail: ; Turn on carry flag if function failed, bring back registers from the beginning of the system call and return
 	stc
 	popa
 	ret
 	
-;read_fat reads the FAT from the disk to disk buffer
-;Input: Nothing
-;Output: Carry flag if function failed
+; read_fat reads the FAT from the disk to disk buffer
+; Input: Nothing
+; Output: Carry flag if function failed
 read_fat:
 	
 	pusha
@@ -340,73 +340,18 @@ get_file_list:
 
 	.file_list_tmp		dw 0
 	
-; Function loads a file into given location
-; Input: AX = string, CX = location to load file at
-; Output: BX = file size 
+; load_file will load file clusters into given location 
+; Input: AX = filename location, CX = loading position
 load_file:
-	
-	pusha
-	
-	call uppercase
+
 	call fatten_file
-	
-	mov [.filename], ax
-	mov [.load_position], cx
-	
-	
-	call read_rootdir
-	
-.search:
-
-	pusha
-	
-	mov cx, 1
-	mov di, disk_buffer
-	mov bx, -32
-	
-.next:
-	cmp cx, 224
-	je .error
-	
-	inc cx
-	
-	add bx, 32
-	add di, bx
-	mov al, [di]
-	
-	cmp al, 0
-	je .error
-	
-	cmp al, 0E5h ; 0xE5 means file was deleted
-	je .next
-	
-	test byte [di+11], 00011000b ; If this is a volume label or sub directory skip to the next entry
-	jnz .next
-	
-	mov byte [di+11], 0 ; Adding a terminator so name will be comparable
-	mov ax, di
 	call uppercase
-	
-	mov si, [.filename]
-	
-	call compare_strings
-	jnc .next ; If strings aren't equal, search the next entry
-	jmp .found_file_to_load
-	
-.error:
 
-	xor dx, dx ; Moving cursor to (0, 0)
-	call move_cursor
-	
-	mov si, [.file_not_found] ; Print proper message
-	call print_string
-	
-	popa 
-	
-	mov bx, 0 ; Return file size = 0
-	stc
-	ret
+	mov [.filename], ax		; Store filename location
+	mov [.load_position], cx	; And where to load the file!
 
+	call read_rootdir 		; Reading root directory to disk buffer
+	call get_root_entry 	; Find location of filename and put it in DI
 
 .found_file_to_load:			; Now fetch cluster and load FAT into RAM
 	mov ax, [di+28]			; Store file size to return to calling routine
@@ -418,47 +363,20 @@ load_file:
 	mov ax, [di+26]			; Now fetch cluster and load FAT into RAM
 	mov word [.cluster], ax
 
-	mov ax, 1			; Sector 1 = first sector of first FAT
-	call disk_convert_l2hts
-
-	mov di, disk_buffer		; ES:BX points to our buffer
-	mov bx, di
-
-	mov ah, 2			; int 13h params: read sectors
-	mov al, 9			; And read 9 of them
-
-	pusha
-
-.read_fat:
-	popa				; In case registers altered by int 13h
-	pusha
-
-	stc
-	int 13h
-	jnc .read_fat_ok
-
-	call disk_reset_floppy
-	jnc .read_fat
-
-	popa
-	jmp .error
-
-
-.read_fat_ok:
-	popa
+	call read_fat
 
 
 .load_file_sector:
 	mov ax, word [.cluster]		; Convert sector to logical
 	add ax, 31
-
+ 
 	call disk_convert_l2hts		; Make appropriate params for int 13h
 
 	mov bx, [.load_position]
 
 
-	mov ah, 02			; AH = read sectors, AL = just read 1
-	mov al, 01
+	mov ah, 2			; AH = read sectors, AL = just read 1
+	mov al, 1
 
 	stc
 	int 13h
@@ -508,21 +426,23 @@ load_file:
 	clc				; Carry clear = good load
 	ret
 
+
 	.cluster	dw 0 		; Cluster of the file we want to load
-	
-	.file_not_found db "File not found :(", 0
-	.filename dw 0
-	.load_position dw 0
-	.file_size	dw 0		
+
+	.filename	dw 0		; Temporary store of filename location
+	.load_position	dw 0		; Where we'll load the file
+	.file_size	dw 0		; Size of the file
+
 	.err_msg_floppy_reset	db 'os_load_file: Floppy failed to reset', 0
 	
 
 
 ; write_file saves (max 64K) file to disk
-; IN: AX = filename, BX = data location, CX = bytes to write
-; OUT: Carry clear if OK, set if failure
+; Input: AX = filename, BX = data location, CX = bytes to write
+; Output: Carry clear if OK, set if failure
 write_file:
 	pusha
+	
 
 	mov si, ax  	; Error if string is null
 	call string_length
@@ -537,6 +457,7 @@ write_file:
 	mov word [.filesize], cx 	; Store parameters
 	mov word [.location], bx
 	mov word [.filename], ax
+	
 
 	call file_exists		; Don't overwrite a file if it exists!
 	jnc near .failure
@@ -814,12 +735,217 @@ write_file:
 	.count		dw 0
 	.location	dw 0
 	
-	.bad_message dw "shoot", 0
 	.clusters_needed	dw 0
 
 	.filename	dw 0
 
 	.free_clusters	times 128 dw 0
+	
+	
+make_directory:
+
+	pusha
+	
+
+	mov si, ax  	; Error if string is null
+	call string_length
+	cmp ax, 0
+	je near .failure
+	mov ax, si
+
+	call uppercase
+	call fatten_file	; Make filename FAT12-style
+	jc near .failure
+
+	mov word [.location], bx ; Store params
+	mov word [.filename], ax
+	
+	call file_exists		; Don't overwrite a file if it exists!
+	jnc near .failure
+	
+	; First, zero out the .free_clusters list from any previous execution
+	pusha
+
+	mov di, .free_clusters
+	mov cx, 128
+.clean_free_loop:
+	mov word [di], 0
+	inc di
+	inc di
+	loop .clean_free_loop
+
+	popa
+
+
+.carry_on:
+
+	mov word [.clusters_needed], 1 		; We need just 1 cluster to
+
+	mov word ax, [.filename]	; Get filename back
+
+	call create_file		; Create empty root dir entry for this file
+	jc near .failure		; If we can't write to the media, jump out
+
+	call read_fat		; Get FAT copy into RAM
+	mov si, disk_buffer + 3		; And point SI at it (skipping first two clusters)
+
+	mov bx, 2			; Current cluster counter
+	mov word cx, [.clusters_needed]
+	mov dx, 0			; Offset in .free_clusters list
+
+.find_free_cluster:
+	lodsw				; Get a word
+	and ax, 0FFFh			; Mask out for even
+	jz .found_free_even		; Free entry?
+
+.more_odd:
+	inc bx				; If not, bump our counter
+	dec si				; 'lodsw' moved on two chars; we only want to move on one
+
+	lodsw				; Get word
+	shr ax, 4			; Shift for odd
+	or ax, ax			; Free entry?
+	jz .found_free_odd
+
+.more_even:
+	inc bx				; If not, keep going
+	jmp .find_free_cluster
+
+
+.found_free_even:
+	push si
+	mov si, .free_clusters		; Store cluster
+	add si, dx
+	mov word [si], bx
+	pop si
+
+	jmp .add_cluster
+
+
+.found_free_odd:
+	push si
+	mov si, .free_clusters		; Store cluster
+	add si, dx				; Add offset
+	mov word [si], bx
+	pop si
+
+	jmp .add_cluster
+
+
+
+.add_cluster:
+	mov di, .free_clusters
+	mov word bx, [di]		; Get last cluster
+
+	mov ax, bx
+
+	mov dx, 0
+	mov bx, 3
+	mul bx
+	mov bx, 2
+	div bx				; DX = [.cluster] mod 2
+	mov si, disk_buffer
+	add si, ax			; AX = word in FAT for the 12 bit entry
+	mov ax, word [ds:si]
+
+	or dx, dx			; If DX = 0, [.cluster] = even; if DX = 1 then odd
+	jz .even_last
+
+.odd_last:
+	and ax, 000Fh			; Set relevant parts to FF8h (last cluster in file)
+	add ax, 0FF80h
+	jmp .finito
+
+.even_last:
+	and ax, 0F000h			; Same as above, but for an even cluster
+	add ax, 0FF8h
+
+
+.finito:
+	mov word [ds:si], ax
+
+	call write_fat		; Save our FAT back to disk
+
+
+	; Now it's time to save the sectors to disk!
+
+	mov cx, 0
+
+.save_loop:
+	mov di, .free_clusters
+	add di, cx
+	mov word ax, [di]
+
+	cmp ax, 0
+	je near .write_root_entry
+
+	pusha
+
+	add ax, 31
+
+	call disk_convert_l2hts
+
+	mov word bx, [.location] ; Location to read from at ES:BX
+
+	mov ah, 3 		; Writing clusters
+	mov al, 1
+	stc
+	int 13h
+
+	popa
+
+	add word [.location], 512
+	inc cx
+	inc cx
+	jmp .save_loop
+
+
+.write_root_entry:
+
+	; Now it's time to head back to the root directory, find our
+	; entry and update it with the cluster in use and file size
+
+	call read_rootdir
+
+	mov word ax, [.filename]
+	call get_root_entry
+
+	mov word ax, [.free_clusters]	; Get first free cluster
+
+	mov word [di+26], ax		; Save cluster location into root dir entry
+
+	mov word cx, [.filesize]
+	mov word [di+28], cx
+
+	mov byte [di+30], 0		; File size
+	mov byte [di+31], 0
+
+	call write_rootdir
+
+.finished:
+	popa
+	clc
+	ret
+
+.failure:
+	popa
+	stc				; Couldn't write!
+	ret
+
+
+	.filesize	dw 0
+	.cluster	dw 0
+	.count		dw 0
+	.location	dw 0
+	
+	.clusters_needed	dw 0
+
+	.filename	dw 0
+
+	.free_clusters	times 128 dw 0
+	
+	
+	
 	
 ; get_root_entry searches RAM copy of root dir for file entry
 ; Input: AX = filename
@@ -830,6 +956,7 @@ get_root_entry:
 	pusha
 
 	mov word [.filename], ax
+	
 
 	mov cx, 224			; Search all (224) entries
 	mov ax, 0			; Searching at offset 0
@@ -864,7 +991,7 @@ get_root_entry:
 	popa
 
 	mov word di, [.tmp]
-
+	
 	clc
 	ret
 
@@ -967,6 +1094,8 @@ rename_file:
 	push ax 	; This is useless but we want to store the bx param
 	push bx 	; Storing BX
 	
+	
+	
 	call read_rootdir 	; Making a copy of the root directory in the disk buffer
 	
 	call fatten_file 	; Converting filename into a fat12 style
@@ -979,23 +1108,31 @@ rename_file:
 	call fatten_file 	; Making the new filename string fat12 style
 	call uppercase
 	
-	mov si, ax 	
+	mov si, ax
 	
 	mov cx, 11 		; 11 bytes to copy from SI to DI
 	rep movsb
 	
-	call write_rootdir 	; Writing our new root directory from the disk buffer to disk
-	jc .failure
 	
+	call write_rootdir 	; Writing our new root directory from the disk buffer to disk
+	jc .write_fail
+	
+	pop si
 	popa
 	clc
 	ret
 	
 .failure:
+	pop ax
+	pop bx
 	popa
 	stc
 	ret
 
+.write_fail:
+	popa
+	stc
+	ret
 
 	
 ; file_exists checks if a file exists and returns a carry flag if it doesn't
@@ -1052,6 +1189,113 @@ file_exists:
 	
 	
 	.filename dw 0
+
+
+; delete_file deletes a file from the disk
+; Input: AX = location of filename to remove
+; Output: None
+delete_file:
+	pusha
+	
+	call fatten_file
+	call uppercase
+	
+	push ax				; Save filename
+
+	clc
+
+	call read_rootdir		; Get root dir into disk_buffer
+	mov di, disk_buffer		; Point DI to root dir
+
+	pop ax				; Get chosen filename back
+
+	call get_root_entry	; Entry will be returned in DI
+	jc .failure			; If entry can't be found
+
+
+	mov ax, word [es:di+26]		; Get first cluster number from the dir entry
+	mov word [.cluster], ax		; And save it
+
+	mov byte [di], 0E5h		; Mark directory entry (first byte of filename) as empty
+
+	inc di
+
+	mov cx, 0			; Set rest of data in root dir entry to zeros
+.clean_loop:
+	mov byte [di], 0
+	inc di
+	inc cx
+	cmp cx, 31			; 32-byte entries, minus E5h byte we marked before
+	jl .clean_loop
+
+	call write_rootdir	; Save back the root directory from RAM
+
+
+	call read_fat		; Now FAT is in disk_buffer
+	mov di, disk_buffer		; And DI points to it
+
+
+.more_clusters:
+	mov word ax, [.cluster]		; Get cluster contents
+
+	cmp ax, 0			; If it's zero, this was an empty file
+	je .nothing_to_do
+
+	mov bx, 3			; Determine if cluster is odd or even number
+	mul bx
+	mov bx, 2
+	div bx				; DX = [first_cluster] mod 2
+	mov si, disk_buffer		; AX = word in FAT for the 12 bits
+	add si, ax
+	mov ax, word [ds:si]
+
+	or dx, dx			; If DX = 0 [.cluster] = even, if DX = 1 then odd
+
+	jz .even			; If [.cluster] = even, drop last 4 bits of word
+					; with next cluster; if odd, drop first 4 bits
+.odd:
+	push ax
+	and ax, 000Fh			; Set cluster data to zero in FAT in RAM
+	mov word [ds:si], ax
+	pop ax
+
+	shr ax, 4			; Shift out first 4 bits (they belong to another entry)
+	jmp .calculate_cluster_cont	; Onto next sector!
+
+.even:
+	push ax
+	and ax, 0F000h			; Set cluster data to zero in FAT in RAM
+	mov word [ds:si], ax
+	pop ax
+
+	and ax, 0FFFh			; Mask out top (last) 4 bits (they belong to another entry)
+
+.calculate_cluster_cont:
+	mov word [.cluster], ax		; Store cluster
+
+	cmp ax, 0FF8h			; Final cluster marker?
+	jae .end
+
+	jmp .more_clusters		; If not, grab more
+
+.end:
+	call write_fat
+	jc .failure
+
+.nothing_to_do:
+	popa
+	clc
+	ret
+
+.failure:
+	popa
+	stc
+	ret
+
+
+	.cluster dw 0
+	
+
 
 ;disk_convert_l2hts -- Calculate head, track and sector for int 13h
 ;IN: logical sector in AX; OUT: correct registers for int 13h

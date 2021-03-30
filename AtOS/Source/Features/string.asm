@@ -118,7 +118,7 @@ string_length:
 	
 ; input_new_filename will ask the user to write a filename
 ; Input: DI = string to overwrite with a new filename
-; Output: None
+; Output: Carry if canceled
 input_new_filename:
 
 	pusha
@@ -130,6 +130,9 @@ input_new_filename:
 	
 	cmp ah, 1
 	je .cancel
+	
+	cmp al, ','
+	je .start
 	
 	cmp al, '.' 	; If user finished name earlier than expected
 	je .extention
@@ -173,6 +176,9 @@ input_new_filename:
 	
 .extention:
 
+	cmp cx, 1 	; If no characters in name go back
+	je .start
+
 	mov ah, 0Eh 	; Print the extention dot
 	mov al, '.'
 	int 10h
@@ -193,6 +199,9 @@ input_new_filename:
 	jbe .three_letters
 	
 	cmp al, '.'
+	je .three_letters
+	
+	cmp al, ','
 	je .three_letters
 	
 	mov byte [di], al
@@ -216,12 +225,15 @@ input_new_filename:
 	
 
 ; input_new_string will save the text written in the text box
-; Input: DI = Location of string
-; Output: None
+; Input: DI = Location of string, SI = starting location, CL = Starting page number
+; Output: DI = Location of new text string, BX = Length
 input_new_string:
 
 	pusha
-	mov [.string], di
+	mov [.string], si
+	mov byte [.page_num], cl
+	mov word [.length], 0
+	
 	
 .start:
 
@@ -246,6 +258,8 @@ input_new_string:
 	cmp al, 7Eh 	; Anything above and including 7E is not a valid string character
 	jae .start 
 	
+	inc word [.length]
+	
 	mov ah, 0Eh			; int 10h teletype function
 	int 10h 			; Display char on screen	
 	
@@ -264,12 +278,14 @@ input_new_string:
 	
 	
 .enter:
+
+	inc word [.length]
 	
 	call get_cursor_pos
-	cmp dh, 23 	; End of page?
+	cmp dh, 23 			; End of page?
 	je .new_page
 	
-	mov al, 0Ah 	; New line
+	mov al, 0Ah 		; New line
 
 	mov byte [di], al  	; New line
 	inc di
@@ -293,6 +309,7 @@ input_new_string:
 	mov ax, .write_text_caption
 	mov si, .write_text_message
 	call text_box
+	call show_cursor
 	
 	mov byte [di], 0 	; End of first page 
 	inc di
@@ -309,11 +326,12 @@ input_new_string:
 	
 	mov byte [di], al
 	inc di
+	inc word [.length]
 
 	jmp .start
 
 .delete_enter:
-
+	
 	call get_cursor_pos
 	cmp dh, 3 	; If we haven't written anything yet
 	je .scroll_up 	; Go up a page
@@ -341,8 +359,6 @@ input_new_string:
 	inc dl
 	call move_cursor
 	
-	dec di 	; Overwrite new-line key
-	
 	jmp .start
 	
 .scroll_up:
@@ -350,8 +366,8 @@ input_new_string:
 	cmp byte [.page_num], 1 	; Skip if we're at the first page
 	je .start
 	
-	dec byte [.page_num]
-	mov word si, [.string]
+	dec byte [.page_num] 	; Page number we want
+	mov si, [.string]
 	
 	cmp byte [.page_num], 1 	; Skip if we're at the first page
 	je .first_page
@@ -366,14 +382,15 @@ input_new_string:
 	jmp .find_page_start
 	
 .check_start:
-	inc cx
-	cmp byte cl, [.page_num]
+	inc cx 		; Increase terminator counter
+	cmp cl, [.page_num] 	; Check if we got to the page already
 	je .found_start
 	
 	jmp .find_page_start
 
 .first_page:
 	dec si
+	
 	
 .found_start:
 	inc si
@@ -382,6 +399,9 @@ input_new_string:
 	jmp .start
 	
 .backspace:
+
+	dec word [.length]
+	dec di 		; Overwrite last input char
 	
 	call get_cursor_pos
 	cmp dl, 24 	; If no characters were printed yet
@@ -393,23 +413,21 @@ input_new_string:
 	int 10h
 	mov al, 8 	; Going backwards again
 	int 10h
-
-	dec di 		; Overwrite last input char later
 	
 	jmp .start
-
+ 
 .finish:
-	mov byte [di], 0 	; Zero is the string terminator
-	
+	mov byte [di], 0 	; Zero is the string terminators
 	popa
+	mov bx, [.length]
 	ret
 	
 	.tmp_char db 0
 	.rem_char db 0
 	.page_num db 1
-	.counter db 0
 	.write_text_caption db "Write text", 0
 	.write_text_message db "Continue writing: ", 0
+	.length dw 0
 	.string dw 0
 
 ; Function prints a written page with a given SI page string location

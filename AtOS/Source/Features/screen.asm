@@ -218,7 +218,7 @@ commands_dialog:
 	cmp dl, 47 ; Max right position
 	jae .go_left ; If we're at the max right position and we want to move right, go to the max left position
 	
-	add word [cursor_xlocation], 13 ; Move right
+	add byte [cursor_xlocation], 13 ; Move right
 	jmp .drawing
 	
 .left_pressed:
@@ -226,7 +226,7 @@ commands_dialog:
 	cmp dl, 21 ; Max left position
 	jbe .go_right ; If we're at the max left position and we want to move left, go to the max right position 
 
-	sub word [cursor_xlocation], 13 ; Move right
+	sub byte [cursor_xlocation], 13 ; Move right
 	jmp .drawing
 	
 .down_pressed:
@@ -234,7 +234,7 @@ commands_dialog:
 	cmp dh, 4
 	je .drawing
 	
-	inc word [cursor_ylocation]
+	inc byte [cursor_ylocation]
 	jmp .drawing
 	
 .up_pressed:
@@ -242,18 +242,18 @@ commands_dialog:
 	cmp dh, 3
 	je .drawing
 	
-	dec word [cursor_ylocation]
+	dec byte [cursor_ylocation]
 	jmp .drawing
 	
 
 .go_left:
 	
-	mov word [cursor_xlocation], 21 	 ; Max left position
+	mov byte [cursor_xlocation], 21 	 ; Max left position
 	jmp .drawing
 	
 .go_right:
 
-	mov word [cursor_xlocation], 47 	; Max right position
+	mov byte [cursor_xlocation], 47 	; Max right position
 	jmp .drawing
 	
 
@@ -384,7 +384,7 @@ text_box:
 	
 ; move_marker moves the marker
 ; Input: CX = number of files, DI = location of file
-; Output: selected filename string location in DI
+; Output: selected filename string location in DI, carry if canceled
 move_marker:
 
 	pusha
@@ -392,23 +392,13 @@ move_marker:
 	
 	call hide_cursor
 	
-	call wait_for_key
-	
 	mov word [.num_of_files], cx 	; Store CX param
 	add word [.num_of_files], 3 	; Now .num_of_files will contain the max Y position
 	
 	mov byte [.Xlocation], 24
-	mov byte [.Ylocation], 4
+	mov byte [.Ylocation], 3
 	
 .drawing:
-
-	; Drawing white square
-	mov dl, 24 	
-	mov dh, 3
-	mov bl, 11110000b 	 ; Black text on white
-	mov si, 12 		; We only need to fill the max string length
-	mov di, 24
-	call draw_blocks
 	
 	;drawing marker
 	mov dl, [.Xlocation]
@@ -421,7 +411,6 @@ move_marker:
 	inc al 
 	mov di, ax
 	call draw_blocks
-	
 	
 	call show_all_files 	; Get comma seperated string of all files
 	
@@ -438,6 +427,9 @@ move_marker:
 	cmp ah, 1Ch ; Enter pressed
 	je .file_selected
 	
+	cmp ah, 1
+	je .cancel
+	
 	jmp .get_input
 	
 .down_pressed:
@@ -445,7 +437,18 @@ move_marker:
 	cmp dh, [.num_of_files]
 	je .get_input
 	
-	inc word [.Ylocation]
+	; Drawing white square to cover previous marker
+	mov dl, 24 	
+	mov dh, [.Ylocation]
+	mov bl, 11110000b 	 ; Black text on white
+	mov si, 12 		; We only need to fill the max string length
+	xor ax, ax
+	mov al, dh
+	inc al
+	mov di, ax
+	call draw_blocks
+	
+	inc byte [.Ylocation]
 	jmp .drawing
 	
 .up_pressed:
@@ -453,7 +456,19 @@ move_marker:
 	cmp dh, 3
 	je .get_input
 	
-	dec word [.Ylocation]
+	; Drawing white square to cover previous marker
+	mov dl, 24 	
+	mov dh, [.Ylocation]
+	mov bl, 11110000b 	 ; Black text on white
+	mov si, 12 		; We only need to fill the max string length
+	xor ax, ax
+	mov al, dh
+	inc al
+	mov di, ax
+	call draw_blocks
+	
+	
+	dec byte [.Ylocation]
 	jmp .drawing
 	
 .file_selected:
@@ -462,23 +477,25 @@ move_marker:
 	mov dh, [.Ylocation]
 	call move_cursor
 	
-	mov ah, 8
-	pop si,  		; Location to put the selected filename
+	cmp dh, 3
+	je .kernel_file
 	
+	pop si	  		; Location to put the selected filename
+
 	
 .read_filename:
 
+	mov ah, 8
 	int 10h
 	
 	mov byte [si], al
 	inc si
+	mov dh, [.Ylocation]
 	inc dl
 	call move_cursor
 	
 	cmp al, '.'
 	je .extention
-	
-	
 	
 	jmp .read_filename
 	
@@ -487,26 +504,84 @@ move_marker:
 	mov cx, 3
 
 .add_extention:
+	mov ah, 8
 	int 10h
 	mov byte [si], al
 	inc si
+	
 	inc dl
+	mov dh, [.Ylocation]
 	call move_cursor
 	
 	loop .add_extention
 	
 	mov byte [si], 0
-
-	popa
-	ret
 	
 
+	popa
+	clc
+	ret
+	
+.cancel:
+	pop di
+	popa
+	stc
+	ret
+	
+.kernel_file:
+	
+	pusha
+	
+	mov ax, .kernel_file_caption 	; First make the appropriate background
+	call draw_background 	
+	mov dl, 4 	; Drawing a red square
+	mov dh, 6
+	mov si, 72
+	mov di, 9
+	mov bh, 0
+	mov bl, 01001111b	; White on red
+	call draw_blocks 	
+	mov dh, 7 	;Drawing a white line
+	mov dl, 5
+	mov si, 70
+	mov di, 8
+	mov bl, 11110100b  	; Red on white
+	call draw_blocks
+	
+	mov dl, 23 		; Get ready to print string
+	call move_cursor
+	
+	mov si, .kernel_file_message1 	; Printing message
+	call print_string
+	
+	; Drawing white bar under red square
+	mov dh, 9
+	mov dl, 4
+	mov si, 72
+	mov di, 10
+	mov bl, 11110100b 	; Red on white
+	call draw_blocks
+	mov dl, 37
+	call move_cursor
+	mov si, .kernel_file_message2
+	call print_string
+	
+	call wait_for_key
+	
+	popa
+	jmp .cancel 	; Any other key being pressed will also cancel the crime that was about to occur
+	
+	
 
 	.Xlocation db 24
 	.Ylocation db 3
 	.num_of_files dw 0
 	.rename_message1 db "Select file to rename: ", 0
 	.rename_caption db "Rename", 0
+	.kernel_file_caption db "The danger zone", 0
+	.kernel_file_message1 db "Don't destroy the kernel please :(", 0
+	.kernel_file_message2 db "Okay!!", 0
+	.kernel db "kernel.bin", 0
 	
 	
 	
@@ -514,7 +589,7 @@ move_marker:
 ;DATA
 ;================================
 	command_list1 db "Write file   Rename file  Delete file", 0 ; Size = 37 bytes/characters
-	command_list2 db "Show files", 0
+	command_list2 db "Show files   Load a file", 0
 	message_files db "Select a file", 0
 	cursor_ylocation dw 3
 	cursor_xlocation dw 21
