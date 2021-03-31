@@ -383,12 +383,14 @@ text_box:
 	ret
 	
 ; move_marker moves the marker
-; Input: CX = number of files, DI = location of file
+; Input: CX = number of files, DI = location of empty filename, BL = directory flag (if set this will only move through directories)
 ; Output: selected filename string location in DI, carry if canceled
 move_marker:
 
 	pusha
 	push di	
+	
+	mov byte [.dir_flag], bl
 	
 	call hide_cursor
 	
@@ -412,6 +414,8 @@ move_marker:
 	mov di, ax
 	call draw_blocks
 	
+	mov bl, [.dir_flag]
+
 	call show_all_files 	; Get comma seperated string of all files
 	
 .get_input:
@@ -494,33 +498,16 @@ move_marker:
 	inc dl
 	call move_cursor
 	
-	cmp al, '.'
-	je .extention
+	cmp al, 0
+	je .done
 	
 	jmp .read_filename
 	
-.extention:
-	
-	mov cx, 3
 
-.add_extention:
-	mov ah, 8
-	int 10h
-	mov byte [si], al
-	inc si
-	
-	inc dl
-	mov dh, [.Ylocation]
-	call move_cursor
-	
-	loop .add_extention
-	
-	mov byte [si], 0
-	
-
+.done:
 	popa
-	clc
-	ret
+	clc 
+	ret 
 	
 .cancel:
 	pop di
@@ -572,7 +559,7 @@ move_marker:
 	jmp .cancel 	; Any other key being pressed will also cancel the crime that was about to occur
 	
 	
-
+	.dir_flag db 0
 	.Xlocation db 24
 	.Ylocation db 3
 	.num_of_files dw 0
@@ -582,6 +569,11 @@ move_marker:
 	.kernel_file_message1 db "Don't destroy the kernel please :(", 0
 	.kernel_file_message2 db "Okay!!", 0
 	.kernel db "kernel.bin", 0
+	.dir_name dw 0
+	
+	
+	
+
 	
 	
 	
@@ -589,7 +581,7 @@ move_marker:
 ;DATA
 ;================================
 	command_list1 db "Write file   Rename file  Delete file", 0 ; Size = 37 bytes/characters
-	command_list2 db "Show files   Load a file", 0
+	command_list2 db "Show files   Load a file  Create dir", 0
 	message_files db "Select a file", 0
 	cursor_ylocation dw 3
 	cursor_xlocation dw 21

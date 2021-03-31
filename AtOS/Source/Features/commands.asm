@@ -23,15 +23,23 @@ choose_command:
 	
 	cmp dh, 4 	; if DH = 4, show files
 	je .show_files
-
-	mov ax, .write_file_caption 	; First, we ask the user to name the file
-	mov si, .write_file_message
+	
+	;mov ax, .write_file_caption 	; First, we ask the user to name the file
+	;mov si, .write_file_message1
+	;call text_box
+	;mov bl, 1
+	;call show_all_files
+	;mov di, .filename
+	;call move_marker
+	
+	mov ax, .write_file_caption
+	mov si, .write_file_message2
 	call command_box
 	
 	mov di, .new_filename 		; Then, we get the filename input into .new_filename
 	call input_new_filename 	; Input filename
 	jc .display_commands
-	
+
 	mov ax, di 		; Now, make file FAT12 style
 	call fatten_file
 	call uppercase
@@ -57,7 +65,7 @@ choose_command:
 	mov cx, bx 		; CX = amount of data to write (number of chars = number of bytes)
 	mov bx, .text_string 	; BX = location of data to write
 	mov ax, .new_filename 		; AX = filename
-
+	mov dl, 0
 	call write_file
 	jc .finish
 	
@@ -71,6 +79,7 @@ choose_command:
 	mov ax, .files_caption 	; Printing text box with the correct caption
 	mov si, .files_message
 	call text_box
+	mov bl, 0
 	call show_all_files 	; Get comma seperated string of all files
 	
 .waiting:
@@ -91,7 +100,7 @@ choose_command:
 	mov ax, .rename_caption 	; Printing text box with the correct caption
 	mov si, .rename_message1
 	call text_box
-	
+	mov bl, 0
 	call show_all_files 	; Get comma seperated string of all files
 	mov di, .filename
 	call move_marker
@@ -155,11 +164,14 @@ choose_command:
 	
 	
 .delete_file:
+
+	cmp dh, 4
+	;je .write_directory
 	
 	mov ax, .delete_caption
 	mov si, .delete_message
 	call text_box
-	
+	mov bl, 0 	; Directory flag
 	call show_all_files 	; Get comma seperated string of all files
 	mov di, .filename
 	call move_marker
@@ -176,6 +188,7 @@ choose_command:
 	mov si, .load_message
 	call text_box
 	
+	mov bl, 0
 	call show_all_files 	; Get comma seperated string of all files
 	mov di, .filename
 	call move_marker
@@ -252,6 +265,39 @@ choose_command:
 	
 
 	jmp .display_commands
+	
+	
+.write_directory:
+
+	mov ax, .write_file_caption 	; First, we ask the user to name the directory
+	mov si, .write_file_message2
+	call command_box
+	
+	mov di, .new_filename 		; Then, we get the filename input into .new_filename
+	call input_new_dirname 	; Input directory name
+	jc .display_commands
+
+	mov ax, di 		; Now, make file FAT12 style
+	call fatten_dir
+	call uppercase
+
+	call read_rootdir 	; Point DI to root directory in disk buffer
+	mov di, disk_buffer
+	
+	call get_root_entry 	; And check if new filename already exists
+	jnc .file_already_exists 	; If it does, print an error and leave this function
+	
+	mov word [.file_size], 0
+	
+	mov cx, 2
+	
+	mov bx, .file_size
+	
+	mov dl, 1 	; Turn on directory flag
+	call write_file
+	
+	jmp .display_commands
+	
 
 .finish:
 	popa
@@ -260,27 +306,27 @@ choose_command:
 	
 	
 	
-	.error_message db "ERROR", 0
-	.welcome_message db "AtOS, made from my suffering", 0
-	.write_file_caption db "Write file", 0
-	.write_text_caption db "Write text", 0
-	.files_caption db "Files", 0
-	.rename_caption db "Rename", 0
-	.delete_caption db "Delete", 0
-	.load_caption db "Load", 0
-	.write_file_message db "Enter a new file name: ", 0
-	.write_text_message db "Start writing: ", 0
-	.files_message db "Files on this disk: ", 0
-	.rename_message1 db "Select file to rename: ", 0
-	.rename_message2 db "Enter a new name: ", 0
-	.delete_message db "Choose file to extarminate: ", 0
-	.load_message db "Select file to load: ", 0
-	.file_exists_message db "Filename already exists, be original", 0
-	.tmp dw 0, 0
-	.new_filename times 13 dw 0
-	.filename times 13 dw 0
-	.text_length dw 0
-	.file_size dw 0
-	.text_string dw 0
+	.error_message 			db "ERROR", 0
+	.welcome_message 		db "AtOS, made from my suffering", 0
+	.write_file_caption 	db "Write file", 0
+	.write_text_caption 	db "Write text", 0
+	.files_caption 			db "Files", 0
+	.rename_caption 		db "Rename", 0
+	.delete_caption 		db "Delete", 0
+	.load_caption 			db "Load", 0
+	.write_file_message1 	db "Choose a directory", 0
+	.write_file_message2 	db "Enter a new file name: ", 0
+	.write_text_message 	db "Start writing: ", 0
+	.files_message 			db "Files on this disk: ", 0
+	.rename_message1 		db "Select file to rename: ", 0
+	.rename_message2 		db "Enter a new name: ", 0
+	.delete_message 		db "Choose file to extarminate: ", 0
+	.load_message 			db "Select file to load: ", 0
+	.file_exists_message 	db "Filename already exists, be original", 0
+	.new_filename times 13 	dw 0
+	.filename times 13 		dw 0
+	.text_length		 	dw 0
+	.file_size 				dw 0
+	.text_string 			dw 0
 	
 	

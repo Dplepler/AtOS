@@ -223,6 +223,83 @@ input_new_filename:
 	stc
 	ret
 	
+; input_new_dirname will ask the user to write a directory name
+; Input: DI = string to overwrite with a new filename
+; Output: Carry if canceled
+input_new_dirname:
+	pusha
+	mov cx, 1 	 	; Char counter
+	
+.start:
+
+	call wait_for_key 	; Char input
+	
+	cmp ah, 1
+	je .cancel
+	
+	cmp ah, 1Ch 	; If enter was pressed
+	je .finish
+	
+	cmp al, ',' 	; No commas 
+	je .start
+	
+	cmp al, ' ' 	; No spaces
+	je .start
+	
+	cmp al, '.' 	; No dots
+	je .start
+	
+	cmp al, 8 	; If user pressed backspace
+	je .backspace
+	
+	cmp al, 1Fh 	; Anything below and including 1F is not a valid filename character
+	jbe .start
+	
+	mov byte [di], al 	; Add filename char to string
+	inc di 		; Move to the next one
+	mov ah, 0Eh			; int 10h teletype function
+	int 10h
+	
+	
+	inc cx 		; Counter
+	cmp cx, 11  		; Name finished
+	je .finish
+	
+	jmp .start
+
+	
+.backspace:
+	
+	call get_cursor_pos
+	cmp dl, 21 	; If no characters were printed yet
+	je .start
+	mov ah, 0Eh			; int 10h teletype function
+	int 10h 	; Moving cursor backwards
+	mov al, 20h 	; Deleting printed char
+	int 10h
+	mov al, 8 	; Going backwards again
+	int 10h
+	
+	dec di 		; Overwrite last input char later
+	
+	dec cx 		; Counter
+	
+	jmp .start
+	
+.finish:
+	mov byte [di], 0
+	popa
+	clc 
+	ret
+
+	
+	
+.cancel:
+	popa
+	stc
+	ret
+	
+	
 
 ; input_new_string will save the text written in the text box
 ; Input: DI = Location of string, SI = starting location, CL = Starting page number
@@ -469,8 +546,8 @@ write_page:
 	popa
 	ret
 	
-; show_all_files prints all files on the disk into a text box
-; Input: None
+; show_all_files prints all files on the current directory into a text box
+; Input: BL = Directory flag (if set, function will show only directories), AX = Directory name location
 ; Output: CX = number of files
 show_all_files:
 	
@@ -483,23 +560,42 @@ show_all_files:
 	call move_cursor
 	
 	mov ax, .all_files 	; Get all files
-	call get_file_list
+	
+	cmp bl, 1 	; If directory flag is turned on..
+	je .show_directories
+	
+	call get_file_list 	; If directory flag turned off get all files
+	
+	mov si, ax 		; Save .all_files location
+	
+	mov bh, 0 	; Page number
+	
+	jmp .loopy
+	
+.show_directories:
+
+	
+	call get_directory_list
 	
 	mov si, ax
 	
 	mov bh, 0 	; Page number
+	
 	
 .loopy:
 	lodsb
 	mov ah, 0Eh 	; Teletype
 	cmp al, ','
 	je .enter
+	int 10h
 	cmp al, 0
 	je .done
-	int 10h
 	jmp .loopy
 	
 .enter:
+	
+	mov al, 0 	; Print end of line
+	int 10h
 	
 	mov ah, 0Eh
 	mov al, 0Ah 	; New line
@@ -521,6 +617,8 @@ show_all_files:
 	
 	.tmp dw 0
 	.all_files times 1024 db 0
+	
+	
 	
 	
 	
