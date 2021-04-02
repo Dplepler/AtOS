@@ -1,4 +1,3 @@
-
 ; The disk file is a file containing all the disk operations and the FAT12 system on the floppy
 
 ; read_rootdir reads the root directory from the disk to disk buffer
@@ -1366,4 +1365,3 @@ os_fatal_error:
 
 	
 	.msg_inform		db '>>> FATAL OPERATING SYSTEM ERROR', 13, 10, 0
-	

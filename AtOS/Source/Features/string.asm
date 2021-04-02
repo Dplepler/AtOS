@@ -204,6 +204,9 @@ input_new_filename:
 	cmp al, ','
 	je .three_letters
 	
+	cmp al, 8 	; If user pressed backspace
+	je .backspace
+	
 	mov byte [di], al
 	inc di
 	
@@ -617,11 +620,4 @@ show_all_files:
 	
 	.tmp dw 0
 	.all_files times 1024 db 0
-	
-	
-	
-	
-	
-	
-	
 	

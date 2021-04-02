@@ -195,7 +195,8 @@ choose_command:
 	jc .display_commands
 	
 	mov ax, .filename 	; Filename
-	mov cx, 32768 	; Location to load file at
+	mov cx, 32768  	; Location to load file at
+	call read_rootdir
 	call load_file
 	mov word [.file_size], bx
 
