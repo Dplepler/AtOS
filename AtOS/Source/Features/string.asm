@@ -317,7 +317,7 @@ input_new_string:
 	
 .start:
 
-	call wait_for_key 	; Char input
+	call wait_for_key 	; Character input
 	
 	cmp al, 8 	; If user pressed backspace
 	je .backspace
@@ -550,7 +550,7 @@ write_page:
 	ret
 	
 ; show_all_files prints all files on the current directory into a text box
-; Input: BL = Directory flag (if set, function will show only directories), AX = Directory name location
+; Input: BL = directory flag (if set, function will show only directories)
 ; Output: CX = number of files
 show_all_files:
 	
@@ -562,36 +562,47 @@ show_all_files:
 	mov dl, 24
 	call move_cursor
 	
-	mov ax, .all_files 	; Get all files
+	mov si, .all_files 		; We need to clean the all files variable from any previous execution
+	mov cx, 1024
+	
+.clean_loop:
+	
+	mov byte [si], 0
+	inc si
+	loop .clean_loop
+	
+	mov ax, .all_files 	; All files will be put in this variable
 	
 	cmp bl, 1 	; If directory flag is turned on..
 	je .show_directories
 	
 	call get_file_list 	; If directory flag turned off get all files
 	
+	
 	mov si, ax 		; Save .all_files location
+	mov di, ax
 	
 	mov bh, 0 	; Page number
 	
 	jmp .loopy
 	
 .show_directories:
-
 	
 	call get_directory_list
 	
 	mov si, ax
+	mov di, ax
 	
 	mov bh, 0 	; Page number
 	
 	
-.loopy:
-	lodsb
+.loopy: 		
+	lodsb 			; Move byte from SI to AL
 	mov ah, 0Eh 	; Teletype
-	cmp al, ','
+	cmp al, ',' 	; Print enter instead of comma
 	je .enter
-	int 10h
-	cmp al, 0
+	int 10h 	 ; Otherwise print the character
+	cmp al, 0 		; String terminator
 	je .done
 	jmp .loopy
 	
@@ -608,16 +619,30 @@ show_all_files:
 	mov dl, 24
 	call move_cursor
 	
-	inc cx
+	inc cx 			; File counter
 	
 	jmp .loopy
 	
+	
+.dont_add:
+	
+	popa
+	mov cx, 0
+	ret
+	
 .done:
 	mov word [.tmp], cx
+	
+	dec si 			; If there are no files to display, SI will equal DI
+	cmp si, di 		; If so, Don't increase CX, there are 0 files in the directory
+	je .dont_add
+	
+	
 	popa
 	mov cx, [.tmp]
+	inc cx
 	ret
 	
 	.tmp dw 0
-	.all_files times 1024 db 0
+	.all_files times 1024 dw 0
 	

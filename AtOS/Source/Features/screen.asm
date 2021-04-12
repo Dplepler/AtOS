@@ -165,7 +165,7 @@ commands_dialog:
 	mov bl, 01110000b ; Black on gray
 	mov bh, 0
 	mov si, 40
-	mov di, 6
+	mov di, 7
 	call draw_blocks
 	
 .drawing:
@@ -176,15 +176,15 @@ commands_dialog:
 	mov bl, 11001111b
 	mov bh, 0
 	mov si, 38  	; Width
-	mov di, 5 		; Finish Y = 5
+	mov di, 6 		; Finish Y = 6
 	call draw_blocks
 	
 
 	; Drawing file marker
 	mov dl, [cursor_xlocation]
 	mov dh, [cursor_ylocation]
-	mov si, 11 		; Width of currently selected file
-	mov bl, 11111100b ; Red text on white background
+	mov si, 11 					; Width of currently selected file
+	mov bl, 11111100b 			; Red text on white background
 	mov di, [cursor_ylocation]
 	inc di
 	call draw_blocks
@@ -231,7 +231,7 @@ commands_dialog:
 	
 .down_pressed:
 	
-	cmp dh, 4
+	cmp dh, 5
 	je .drawing
 	
 	inc byte [cursor_ylocation]
@@ -289,6 +289,10 @@ write_commands:
 	call move_cursor
 	mov si, command_list2
 	call print_string
+	inc dh
+	call move_cursor
+	mov si, command_list3
+	call print_string
 	
 	
 	popa
@@ -307,7 +311,7 @@ command_box:
 	; Drawing red square
 	mov dl, 20 	 ; X location to start
 	mov dh, 4 	; Y location to start
-	mov bl, 11001111b 	; Red color on white text
+	mov bl, 11001111b 	; White text on red
 	mov bh, 0
 	mov si, 40 	 ; Width 
 	mov di, 14 	; Height
@@ -395,7 +399,7 @@ move_marker:
 	call hide_cursor
 	
 	mov word [.num_of_files], cx 	; Store CX param
-	add word [.num_of_files], 3 	; Now .num_of_files will contain the max Y position
+	add word [.num_of_files], 2 	; Now .num_of_files will contain the max Y position
 	
 	mov byte [.Xlocation], 24
 	mov byte [.Ylocation], 3
@@ -417,6 +421,8 @@ move_marker:
 	mov bl, [.dir_flag]
 
 	call show_all_files 	; Get comma seperated string of all files
+	cmp cx, 0
+	je .cancel
 	
 .get_input:
 
@@ -431,8 +437,13 @@ move_marker:
 	cmp ah, 1Ch ; Enter pressed
 	je .file_selected
 	
+	cmp ah, 39h	; Pressing space will also cancel
+	je .cancel
+	
 	cmp ah, 1
 	je .cancel
+	
+	
 	
 	jmp .get_input
 	
@@ -481,11 +492,8 @@ move_marker:
 	mov dh, [.Ylocation]
 	call move_cursor
 	
-	cmp dh, 3
-	je .kernel_file
-	
 	pop si	  		; Location to put the selected filename
-
+	push si
 	
 .read_filename:
 
@@ -505,6 +513,13 @@ move_marker:
 	
 
 .done:
+	
+	pop si 	 		; Check if string name is equal to kernel name
+	mov di, .kernel
+	call compare_strings
+	jc .kernel_file		; If so, print a message and don't continue 
+	
+
 	popa
 	clc 
 	ret 
@@ -553,10 +568,12 @@ move_marker:
 	mov si, .kernel_file_message2
 	call print_string
 	
-	call wait_for_key
+	call wait_for_key 	; Any other key being pressed will also cancel the crime that was about to occur
 	
 	popa
-	jmp .cancel 	; Any other key being pressed will also cancel the crime that was about to occur
+	popa
+	stc
+	ret
 	
 	
 	.dir_flag db 0
@@ -568,12 +585,54 @@ move_marker:
 	.kernel_file_caption db "The danger zone", 0
 	.kernel_file_message1 db "Don't destroy the kernel please :(", 0
 	.kernel_file_message2 db "Okay!!", 0
-	.kernel db "kernel.bin", 0
+	.kernel db "KERNEL.BIN", 0
 	.dir_name dw 0
 	
 	
+; choose_or_open just prints a message asking if user wants to open a directory or choose it
+; Input: None 
+; Output: None
+choose_or_open:
+	; Printing message that asks if user wants to open directory or choose it
+	pusha
+	mov ax, .move_caption
+	call draw_background
 	
-
+	mov dl, 17
+	mov dh, 5
+	mov bl, 11110000b
+	mov bh, 0
+	mov si, 44
+	mov di, 10
+	call draw_blocks
+	
+	mov dl, 18
+	mov si, 42
+	mov bl, 01001111b
+	mov dh, 6
+	mov di, 9
+	call draw_blocks
+	
+	mov si, .choose_dir_message1
+	mov dl, 21
+	mov dh, 6
+	call move_cursor
+	
+	call print_string
+	
+	add dh, 2
+	sub dl, 3
+	call move_cursor
+	
+	mov si, .choose_dir_message2
+	call print_string
+	popa
+	ret
+	
+	
+	.choose_dir_message1     db "Do you want to choose this directory?", 0
+	.choose_dir_message2     db "Press enter to choose or escape to open it", 0
+	.move_caption 			 db "Move", 0
 	
 	
 	
@@ -582,6 +641,7 @@ move_marker:
 ;================================
 	command_list1 db "Write file   Rename file  Delete file", 0 ; Size = 37 bytes/characters
 	command_list2 db "Show files   Load a file  Create dir", 0
+	command_list3 db "Move files   Copy files", 0
 	message_files db "Select a file", 0
 	cursor_ylocation dw 3
 	cursor_xlocation dw 21
