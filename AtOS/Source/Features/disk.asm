@@ -460,7 +460,7 @@ get_directory_list:
 	.file_list_tmp		dw 0
 	
 ; load_file will load file clusters into given location 
-; Input: AX = filename location, CX = loading position, Directory in disk buffer
+; Input: AX = filename location, CX = loading position, directory in disk buffer
 ; Output: BX = file size (in bytes), SI = first cluster word location, carry set if file not found
 load_file:
 
@@ -487,12 +487,16 @@ load_file:
 	mov ax, [di+26]			; Now fetch cluster and load FAT into RAM
 	mov word [.cluster], ax
 	mov word [.first_cluster], ax
+	
+	
+
 
 	call read_fat_to_ram
 	mov ax, 32768 	; Point AX at RAM
 
 .load_file_sector:
 	mov ax, word [.cluster]
+	
 
 	add ax, 31 			; Convert sector to logical
 
@@ -507,6 +511,7 @@ load_file:
 	stc
 	int 13h
 	jnc .calculate_next_cluster	; If there's no error...
+	
 
 	call disk_reset_floppy		; Otherwise, reset floppy and retry
 	jnc .load_file_sector
@@ -516,6 +521,7 @@ load_file:
 
 
 .calculate_next_cluster:
+	
 	
 	mov ax, [.cluster]
 	mov bx, 3
@@ -541,7 +547,7 @@ load_file:
 
 .calculate_cluster_cont:
 	mov word [.cluster], ax		; Store cluster
-
+	
 	cmp ax, 0FF8h
 	jae .end
 
@@ -568,15 +574,15 @@ load_file:
 
 
 ; write_file saves (max 64K) file to disk
-; Input: AX = filename, BX = data location, CX = bytes to write, DL = directory flag (set if file is a subdirectory)
+; Input: AX = filename, BX = data location, CX = bytes to write, DL = directory flag (set if file is a subdirectory), SI = start location of first cluster of directory, 0 if root
 ; Output: Carry clear if OK, set if failure
 write_file:
 	pusha
 
 	mov byte [.is_dir], dl
-	
-	call read_rootdir
+	mov [.first_cluster], si
 
+	
 	mov si, ax  	; Error if string is null
 	call string_length
 	cmp ax, 0
@@ -593,8 +599,16 @@ write_file:
 	mov word [.location], bx
 	mov word [.filename], ax
 
+	
+	mov si, [.first_cluster] 		; Load directory
+	mov ax, [si]
+	call load_with_first_cluster
+	
+	mov ax, [.filename]
+
+	mov di, disk_buffer
 	call get_root_entry 	; Check if filename exists
-	jnc near .failure
+	jnc near .file_exists
 
 
 	; First, zero out the .free_clusters list from any previous execution
@@ -627,24 +641,14 @@ write_file:
 
 	mov word [.clusters_needed], ax
 
-	mov word ax, [.filename]	; Get filename back
-	
-
-	call create_file		; Create empty root dir entry for this file
-	jc near .failure		; If we can't write to the media, jump out
-	
-	
 
 	mov word bx, [.filesize]
 	cmp bx, 0
 	je near .finished ; If size is 0..
 	
-
-	
 	call read_fat		; Get FAT copy into disk buffer
 	mov si, disk_buffer + 3		; And point SI at it (skipping first two clusters)
 	
-
 
 	mov bx, 2			; Current cluster counter
 	mov word cx, [.clusters_needed]
@@ -770,6 +774,7 @@ write_file:
 
 
 .last_cluster:
+
 	mov di, .free_clusters
 	add di, cx
 	mov word bx, [di]		; Get last cluster
@@ -799,12 +804,11 @@ write_file:
 
 
 .finito:
-	mov word [ds:si], ax
-
-	call write_fat		; Save our FAT back to disk
-
 
 	; Now it's time to save the sectors to disk!
+	
+	mov word [ds:si], ax
+	call write_fat
 
 	mov cx, 0
 
@@ -821,6 +825,7 @@ write_file:
 	add ax, 31
 
 	call disk_convert_l2hts
+	
 
 	mov word bx, [.location] ; Location to read from at ES:BX
 
@@ -828,12 +833,15 @@ write_file:
 	mov al, 1
 	stc
 	int 13h
+	
 
 	popa
 
 	add word [.location], 512
 	inc cx
 	inc cx
+	
+	
 	jmp .save_loop
 
 
@@ -842,11 +850,29 @@ write_file:
 	; Now it's time to head back to the root directory, find our
 	; entry and update it with the cluster in use and file size
 
-	call read_rootdir
+	
+	mov si, [.first_cluster] 		; Load directory
+	mov ax, [si]
+	call load_with_first_cluster
+	
+	mov word ax, [.filename]	; Get filename back
+	mov si, [.first_cluster] 		; Put first cluster in BX as a parameter 
+	mov bx, [si]
+	
 
-	mov word ax, [.filename]
+	call create_file		; Create empty root dir entry for this file
+	jc near .failure		; If we can't write to the media, jump out
+	
+	mov si, [.first_cluster] 		; Load directory
+	mov ax, [si]
+	call load_with_first_cluster
+
+
+	mov ax, [.filename]
 	mov di, disk_buffer
 	call get_root_entry
+
+	
 
 	mov word ax, [.free_clusters]	; Get first free cluster
 
@@ -862,7 +888,9 @@ write_file:
 	jne .directory
 	
 
-	call write_rootdir
+	mov si, [.first_cluster] 		; Load directory
+	mov ax, [si]
+	call update_directory
 
 .finished:
 
@@ -872,10 +900,18 @@ write_file:
 	
 .directory:
 
-	mov byte [di+11], 00010000b 	; Turn on subdirectroy flag
-	call write_rootdir
+	mov byte [di+11], 00010000b 	; Turn on subdirectroy attribute flag
+	
+	mov si, [.first_cluster] 		; Load directory
+	mov ax, [si]
+	call update_directory
+	
 	jmp .finished
+	
+.file_exists:
 
+	call file_already_exists 		; Inform user that the file already exists
+	
 .failure:
 	popa
 	stc				; Couldn't write!
@@ -888,6 +924,7 @@ write_file:
 	.count		dw 0
 	.location	dw 0
 	
+	.first_cluster 			dw 0
 	.clusters_needed	dw 0
 
 	.filename	dw 0
@@ -895,15 +932,16 @@ write_file:
 	.free_clusters	times 128 dw 0
 	
 	
-; load_with_first_cluster loads the file to disk buffer by using the first cluster of it, this function is stupid as hell and if I don't fix it until I finish 
-; Then I am sorry for anyone reading this having to read this crap - I had to use this to fix something, basically it doesn't use the RAM so that's good but it only works
-; For directories.
+; load_with_first_cluster loads directory to disk buffer by using the first cluster of it. Only two cluster files allowed.
 ; Input: AX = first cluster
 ; Output: None
 load_with_first_cluster:
 
 	mov word [.cluster], ax
 	mov word [.location], disk_buffer
+	
+	cmp ax, 0 			; If given cluster equals 0 we want to load the root directory
+	je .load_root
 
 	call read_fat
 
@@ -979,6 +1017,12 @@ load_with_first_cluster:
 	clc				; Carry clear = good load
 	ret
 	
+	
+.load_root:
+	call read_rootdir
+	clc
+	ret
+	
 	.location 				dw 0
 	.cluster				dw 0 		; Cluster of the directory we want to load
 	.cluster2 				dw 0 		; Second cluster of directory
@@ -987,14 +1031,25 @@ load_with_first_cluster:
 	
 	
 ; update_directory gets the first cluster of a directory and updates it with contents in the disk buffer
-; Input: AX = first cluster, New directory in disk buffer
+; Input: AX = first cluster, new directory in disk buffer
 ; Output: None
 update_directory:
 
 	pusha
 	mov word [.cluster], ax 	; Storing first cluster
+	
 	cmp ax, 0 					; If directory is root
 	je .write_root
+	
+	mov si, disk_buffer 			; Copy new directory from disk buffer to a two cluster variable
+	mov di, .two_clusters
+	mov cx, 1024
+	
+	rep movsb
+	
+	mov bx, .two_clusters
+	mov [.location], bx
+	
 	
 .try_write:
 
@@ -1004,12 +1059,12 @@ update_directory:
 	mov ah, 3 					; Writing one sector to drive
 	mov al, 1 
 	
-	mov bx, disk_buffer
+	mov bx, [.location]
 	
 	int 13h
 	jc .reset_floppy
 	
-	call read_fat_to_ram
+	call read_fat
 	
 .more_clusters:
 
@@ -1019,7 +1074,7 @@ update_directory:
 	mul bx
 	mov bx, 2
 	div bx				; DX = [first_cluster] mod 2
-	mov si, 32768		; AX = word in FAT for the 12 bits
+	mov si, disk_buffer		; AX = word in FAT for the 12 bits
 	add si, ax
 	mov ax, word [ds:si]
 
@@ -1038,13 +1093,13 @@ update_directory:
 
 .calculate_cluster_cont:
 	mov word [.cluster], ax		; Store cluster
+	add word [.location], 512 	; Write next directory cluster
 
 	cmp ax, 0FF8h			; Final cluster marker?
 	jae .end
 
 	jmp .try_write		; If not, grab more
 	
-
 
 .reset_floppy:
 
@@ -1053,6 +1108,7 @@ update_directory:
 	jmp .try_write
 	
 .write_root:
+
 	call write_rootdir
 	jmp .end
 	
@@ -1069,7 +1125,8 @@ update_directory:
 	ret
 	
 	.cluster dw 0
-
+	.location dw 0
+	.two_clusters times 1024 dw 0
 	
 
 ; get_root_entry searches RAM copy of root dir for file entry
@@ -1129,28 +1186,28 @@ get_root_entry:
 	
 	
 	
-; create_file creates a new file on the floppy disk
-; Input: AX = location of filename
+; create_file creates a new empty file on the floppy disk
+; Input: AX = location of filename, BX = first cluster of parent directory, directory in disk buffer
 ; Output: Nothing
 create_file:
 	clc
 	
+	
 	call uppercase
 	call fatten_file	; Make FAT12-style filename
 	pusha
-
+	
+	push bx 			; Save first cluster
 	push ax				; Save filename for now
 
-	call get_root_entry
-	jnc .exists_error
+	mov di, disk_buffer			
+	call get_root_entry  		; Check if filename exists
+	jnc .exists_error 			
 
 
-	; Root dir already read into disk_buffer by os_file_exists
+	mov di, disk_buffer 
 
-	mov di, disk_buffer		; So point DI at it!
-
-
-	mov cx, 224			; Cycle through root dir entries
+	mov cx, 224			; Cycle through directory entries
 .next_entry:
 	mov byte al, [di]
 	cmp al, 0			; Is this a free entry?
@@ -1162,7 +1219,7 @@ create_file:
 
 .exists_error:				; We also get here if above loop finds nothing
 	pop ax				; Get filename back
-
+	pop bx 				; Get first cluster back
 	popa
 	stc				; Set carry for failure
 	ret
@@ -1170,6 +1227,8 @@ create_file:
 
 .found_free_entry:
 	pop si				; Get filename back
+
+	
 	mov cx, 11
 	rep movsb			; And copy it into RAM copy of root dir (in DI)
 
@@ -1199,24 +1258,18 @@ create_file:
 	mov byte [di+30], 0		; File size
 	mov byte [di+31], 0		; File size
 
-	call write_rootdir
-	jc .failure
-
+	pop ax 				; Put first cluster in AX
+	call update_directory
+	
+	
 	popa
 	clc				; Clear carry for success
 	ret
 
-.failure:
-	popa
-	stc
-	ret
-	
-
-
 	
 
 ; rename_file takes a filename and switches it with a new filename
-; Input: AX = filename, BX = new filename
+; Input: AX = filename, BX = new filename, DX = first cluster of parent directory, 0 if root
 ; Output: Carry flag if failure happens
 rename_file:
 	pusha
@@ -1224,18 +1277,15 @@ rename_file:
 	push ax 	; This is useless but we want to store the bx param
 	push bx 	; Storing BX
 	
-	
-	
-	call read_rootdir 	; Making a copy of the root directory in the disk buffer
-	
-	call fatten_file 	; Converting filename into a fat12 style
+	call fatten_file 	; Converting filename into a FAT12 style
 	call uppercase
 	
+	mov di, disk_buffer
 	call get_root_entry 	; Checking if filename exists and if it does return location in DI
-	jc .failure 	; If function didn't work..
+	jc .failure 	; If filename doesn't exist, bail
 	
 	pop ax 	; Popping the new string to AX
-	call fatten_file 	; Making the new filename string fat12 style
+	call fatten_file 	; Making the new filename string FAT12 style
 	call uppercase
 	
 	mov si, ax
@@ -1243,9 +1293,9 @@ rename_file:
 	mov cx, 11 		; 11 bytes to copy from SI to DI
 	rep movsb
 	
+	mov ax, dx
+	call update_directory
 	
-	call write_rootdir 	; Writing our new root directory from the disk buffer to disk
-	jc .write_fail
 	
 	pop si
 	popa
@@ -1259,10 +1309,6 @@ rename_file:
 	stc
 	ret
 
-.write_fail:
-	popa
-	stc
-	ret
 
 
 
@@ -1286,9 +1332,8 @@ delete_file:
 	pop ax				; Get chosen filename back
 	pop bx
 
-	call get_root_entry	; Entry will be returned in DI
-	jc .failure			; If entry can't be found
-
+	call get_root_entry		; Entry will be returned in DI
+	jc .failure				; If entry can't be found
 
 	mov ax, word [es:di+26]		; Get first cluster number from the dir entry
 	mov word [.cluster], ax		; And save it
@@ -1305,21 +1350,14 @@ delete_file:
 	inc cx
 	cmp cx, 31			; 32-byte entries, minus E5h byte we marked before
 	jl .clean_loop
-
-	cmp bx, 0 		; If BX equals 0, we are in the root directory
-	je .root_dir
+	
 	mov ax, bx  	; Move param to AX, first cluster of directory
 	call update_directory
+	
+	
 
 	call read_fat		; Now FAT is in disk_buffer
 	mov di, disk_buffer		; And DI points to it
-	jmp .more_clusters
-	
-.root_dir:
-
-	call write_rootdir 	; If we are in the root directory we want to update it
-	call read_fat
-	mov di, disk_buffer
 
 
 .more_clusters:

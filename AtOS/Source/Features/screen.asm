@@ -437,10 +437,7 @@ move_marker:
 	cmp ah, 1Ch ; Enter pressed
 	je .file_selected
 	
-	cmp ah, 39h	; Pressing space will also cancel
-	je .cancel
-	
-	cmp ah, 1
+	cmp ah, 1 		; Esc pressed
 	je .cancel
 	
 	
@@ -587,6 +584,50 @@ move_marker:
 	.kernel_file_message2 db "Okay!!", 0
 	.kernel db "KERNEL.BIN", 0
 	.dir_name dw 0
+	
+	
+	
+; file_already_exists prints a message that informs user that the filename he chose already exists in the directory
+; Input: None
+; Output: None
+file_already_exists:
+	
+	pusha
+	; Printing error background
+	mov ax, .error_message
+	call draw_background
+	
+	; Red square
+	mov dl, 21
+	mov dh, 6
+	mov si, 38
+	mov di, 9
+	mov bh, 0
+	mov bl, 01001111b ; White on red
+	call draw_blocks
+	
+	; White square
+	mov dh, 7
+	mov dl, 22
+	mov si, 36
+	mov di, 8
+	mov bl, 11110100b 	; Red on white
+	call draw_blocks
+	
+	; Print file exists message
+	mov dl, 22
+	call move_cursor
+	mov si, .file_exists_message
+	call print_string
+	
+	call wait_for_key 	; Wait for key
+	
+	popa
+	ret
+	
+	.error_message 			 db "ERROR", 0
+	.file_exists_message 	 db "Filename already exists, be original", 0
+	
 	
 	
 ; choose_or_open just prints a message asking if user wants to open a directory or choose it
