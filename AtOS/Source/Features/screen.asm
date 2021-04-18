@@ -398,6 +398,9 @@ move_marker:
 	
 	call hide_cursor
 	
+	cmp cx, 21
+	ja .adjust_num_of_files 			; If there are more files than can be displayed adjust number
+	
 	mov word [.num_of_files], cx 	; Store CX param
 	add word [.num_of_files], 2 	; Now .num_of_files will contain the max Y position
 	
@@ -439,7 +442,6 @@ move_marker:
 	
 	cmp ah, 1 		; Esc pressed
 	je .cancel
-	
 	
 	
 	jmp .get_input
@@ -507,6 +509,17 @@ move_marker:
 	je .done
 	
 	jmp .read_filename
+
+.adjust_num_of_files:
+	
+	mov word [.num_of_files], 21
+	add word [.num_of_files], 2 	; Now .num_of_files will contain the max Y position
+	
+	mov byte [.Xlocation], 24
+	mov byte [.Ylocation], 3
+	
+	
+	jmp .drawing
 	
 
 .done:

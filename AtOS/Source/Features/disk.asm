@@ -937,7 +937,7 @@ write_file:
 ; Output: None
 load_with_first_cluster:
 
-	mov word [.cluster], ax
+	mov word [.two_clusters], ax
 	mov word [.location], disk_buffer
 	
 	cmp ax, 0 			; If given cluster equals 0 we want to load the root directory
@@ -947,7 +947,7 @@ load_with_first_cluster:
 
 .calculate_next_cluster:
 	
-	mov ax, [.cluster]
+	mov ax, [.two_clusters]
 	mov bx, 3
 	mul bx
 	mov bx, 2
@@ -970,11 +970,14 @@ load_with_first_cluster:
 	and ax, 0FFFh			; Mask out top (last) 4 bits
 
 .calculate_cluster_cont:
-	mov word [.cluster2], ax		; Store cluster
+
+	mov si, .two_clusters
+	add si, 2 			; Move on to next cluster
+	mov word [si], ax		; Store cluster
 
 
 .load_file_sector:
-	mov ax, word [.cluster]
+	mov ax, word [.two_clusters]
 
 	add ax, 31 			; Convert sector to logical
 
@@ -1000,7 +1003,10 @@ load_with_first_cluster:
 
 	add word [.location], 512
 	
-	mov ax, [.cluster2]
+	mov si, .two_clusters
+	add si, 2
+	
+	mov ax, [si]
 
 	add ax, 31 			; Convert sector to logical
 
@@ -1024,8 +1030,7 @@ load_with_first_cluster:
 	ret
 	
 	.location 				dw 0
-	.cluster				dw 0 		; Cluster of the directory we want to load
-	.cluster2 				dw 0 		; Second cluster of directory
+	.two_clusters times 4 dw 0 		; Two clusters of directory
 	.err_msg_floppy_reset	db 'os_load_file: Floppy failed to reset', 0
 	
 	
@@ -1482,7 +1487,6 @@ delete_file_from_dir:
 	stc
 	ret
 
-	.mmm db "hello", 0
 	.in_dir  db 0
 	.cluster dw 0
 	

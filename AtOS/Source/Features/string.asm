@@ -596,7 +596,8 @@ show_all_files:
 	mov bh, 0 	; Page number
 	
 	
-.loopy: 		
+.loopy:
+	
 	lodsb 			; Move byte from SI to AL
 	mov ah, 0Eh 	; Teletype
 	cmp al, ',' 	; Print enter instead of comma
@@ -615,11 +616,13 @@ show_all_files:
 	mov al, 0Ah 	; New line
 	int 10h
 	
-	inc dh
+	inc dh 			; Increase Y (or technically decrease)	
 	mov dl, 24
 	call move_cursor
 	
-	inc cx 			; File counter
+	inc cx 			; File counter 	
+	cmp cx, 21 		; Check if max files reached
+	je .done
 	
 	jmp .loopy
 	

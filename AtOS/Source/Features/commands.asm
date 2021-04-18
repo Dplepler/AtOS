@@ -1,5 +1,19 @@
 
 ; Executes all basic commands uppon choice
+; Current commands
+; --------------------------------------------------------------------------------------
+; Write file: Making a new text file on the disk
+; Rename file: Renaming an existing file
+; Delete file: Deleting a file from the disk
+; Show file: Show all files in root directory 
+; Load file: Loading and showing file in text editor, then letting user edit the file
+; Make dir: Making a directory file on the disk
+; Move file: Moving file from directory to directory
+; Copy file: Copying data and name of one file from one directory to another
+; --------------------------------------------------------------------------------------
+
+
+
 choose_command:
 	
 	pusha
