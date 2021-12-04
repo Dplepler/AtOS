@@ -32,11 +32,11 @@ FileSystem		db "FAT12   "	; File system type: don't change!
 
 bootloader_start:
 	mov ax, 07C0h			; Set up 4K of stack space above buffer
-	add ax, 544			; 8k buffer = 512 paragraphs + 32 paragraphs (loader)
-	cli				; Disable interrupts while changing stack
+	add ax, 544				; 8k buffer = 512 paragraphs + 32 paragraphs (loader)
+	cli						; Disable interrupts while changing stack
 	mov ss, ax
 	mov sp, 4096
-	sti				; Restore interrupts
+	sti						; Restore interrupts
 
 	mov ax, 07C0h			; Set data segment to where we're loaded
 	mov ds, ax
@@ -46,7 +46,7 @@ bootloader_start:
 
 	cmp dl, 0
 	je no_change
-	mov [bootdev], dl		; Save boot device number
+	mov [bootdev], dl	; Save boot device number
 	mov ah, 8			; Get drive parameters
 	int 13h
 	jc fatal_disk_error

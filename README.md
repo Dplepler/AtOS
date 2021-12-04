@@ -1,2 +1,3 @@
 # AtOS
-Assembly based OS on the works from 8/12/2020
+16 bit real mode operating system
+Written in Assembly 8086

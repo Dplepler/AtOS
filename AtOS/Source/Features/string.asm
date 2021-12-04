@@ -134,6 +134,7 @@ input_new_filename:
 	cmp al, ','
 	je .start
 	
+	
 	cmp al, '.' 	; If user finished name earlier than expected
 	je .extention
 	
@@ -202,6 +203,9 @@ input_new_filename:
 	je .three_letters
 	
 	cmp al, ','
+	je .three_letters
+	
+	cmp al, ' '
 	je .three_letters
 	
 	cmp al, 8 	; If user pressed backspace
