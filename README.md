@@ -3,8 +3,8 @@
 Written in Assembly 8086
 
 # To run this project
-Just run the setup.py file or you can directly download the Floppy Disk and put it in some kind of vmware
-I was a foolish man when I worked on this project so I ran it with Virtual Box but this should work with vmware, or any software as well
+Just run the setup.py file or you can directly download the Floppy Disk and put it in some kind of hypervisorish technology.
+I was a foolish man when I worked on this project so I ran it with Virtual Box but this should work with vmware, or any software as well.
 
 # Capabilities 
 - Create files
