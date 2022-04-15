@@ -1,6 +1,6 @@
 # AtOS
 16 bit real mode operating system
-Written in Assembly 8086
+written in Assembly 8086
 
 # To run this project
 Just run the setup.py file or you can directly download the Floppy Disk and put it in some kind of hypervisorish technology.
